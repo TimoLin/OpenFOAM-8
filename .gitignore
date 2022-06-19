@@ -84,3 +84,6 @@ doc/Doxygen/DTAGS
 
 # Ignore the test directory
 /tutorialsTest
+
+# Ignore ccls
+.cache
