@@ -63,6 +63,21 @@ class eddyDissipationModelBase
         //- EDM constant
         scalar CEDC_;
 
+        //- Model switch
+        Switch finiteRateModel_;
+
+        //- Finite rate Model constant
+        scalar A_;
+        scalar beta_;
+        scalar Ta_;
+        scalar n1_;
+        scalar n2_;
+
+        //- Arrhenius reaction rate 
+        volScalarField wFR_;
+
+        //- EDM reaction rate 
+        volScalarField wEDM_;
 
     // Private Member Functions
 

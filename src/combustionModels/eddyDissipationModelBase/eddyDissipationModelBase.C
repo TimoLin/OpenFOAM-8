@@ -50,8 +50,50 @@ eddyDissipationModelBase<ReactionThermo, ThermoType>::eddyDissipationModelBase
         turb,
         combustionProperties
     ),
-    CEDC_(this->coeffs().template lookup <scalar>("CEDC"))
-{}
+    CEDC_(this->coeffs().template lookup <scalar>("CEDC")),
+    finiteRateModel_(this->coeffs().template lookupOrDefault <Switch>("FiniteRateModel",false)),
+    A_(0.0),
+    beta_(0.0),
+    Ta_(0.0),
+    n1_(0.0),
+    n2_(0.0),
+    wFR_
+    (
+        IOobject
+        (
+            "wFR",
+            this->mesh().time().timeName(),
+            this->mesh(),
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        this->mesh(),
+        dimensionedScalar(dimMass/dimVolume/dimTime, 0)
+    ),
+    wEDM_
+    (
+        IOobject
+        (
+            "wEDM",
+            this->mesh().time().timeName(),
+            this->mesh(),
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        this->mesh(),
+        dimensionedScalar(dimMass/dimVolume/dimTime, 0)
+    )
+{
+    // By default the FR/EDM model is off
+    if (finiteRateModel_)
+    {
+        A_ = this->coeffs().template lookup <scalar>("A");
+        beta_ = this->coeffs().template lookup <scalar>("beta");
+        Ta_ = this->coeffs().template lookup <scalar>("Ta");
+        n1_ = this->coeffs().template lookup <scalar>("n1");
+        n2_ = this->coeffs().template lookup <scalar>("n2");
+    }
+}
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -97,10 +139,27 @@ void eddyDissipationModelBase<ReactionThermo, ThermoType>::correct()
         {
             const volScalarField& YO2 = this->thermo().composition().Y("O2");
 
-            this->wFuel_ ==
-                  this->rho()
-                * min(YFuel, YO2/s.value())
-                * timeScale();
+            // Eddy dissipation model reaction rate
+            wEDM_ == this->rho() * min(YFuel, YO2/s.value()) * timeScale();
+            
+            if (finiteRateModel_)
+            {
+                // Dimension transformation
+                dimensionedScalar _Ta(dimTemperature,Ta_);
+                dimensionedScalar _A(dimVolume/dimMass/dimTime,A_);
+                // Arrhenius reaction rate
+                wFR_ = sqr(this->rho())*_A*pow(YFuel,n1_)*pow(YO2,n2_)*exp(-_Ta/this->thermo().T());
+                // Combined Finite Rate /Eddy Dissipation model
+                this->wFuel_ == min(wFR_, wEDM_);
+                Info<<"wFR min/max="<<min(wFR_).value()<<","<<max(wFR_).value()<<endl;
+                Info<<"wEDM min/max="<<min(wEDM_).value()<<","<<max(wEDM_).value()<<endl;
+            }
+            else
+            {
+                // Eddy Dissipation model
+                this->wFuel_ == wEDM_;
+            }
+
         }
         else
         {
@@ -119,6 +178,15 @@ bool eddyDissipationModelBase<ReactionThermo, ThermoType>::read()
     if (singleStepCombustion<ReactionThermo, ThermoType>::read())
     {
         this->coeffs().lookup("CEDC") >> CEDC_;
+        this->coeffs().lookup("FiniteRateModel") >> finiteRateModel_;
+        if (finiteRateModel_)
+        {
+            this->coeffs().lookup("A") >> A_;
+            this->coeffs().lookup("beta") >> beta_;
+            this->coeffs().lookup("Ta") >> Ta_;
+            this->coeffs().lookup("n1") >> n1_;
+            this->coeffs().lookup("n2") >> n2_;
+        }
         return true;
     }
 
